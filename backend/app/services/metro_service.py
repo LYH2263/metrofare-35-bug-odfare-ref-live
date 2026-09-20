@@ -69,25 +69,8 @@ class MetroService:
         return row
 
     def delete_flat_fare(self, start: str, end: str) -> bool:
-        ok = flat_repo.delete_pair(self._conn, start, end)
-        rules = rules_repo.as_calc_rules(self._conn)
-        for row in runs_repo.list_recent(self._conn, 200):
-            try:
-                inp = json.loads(row["input_json"])
-                result = json.loads(row["result_json"])
-            except Exception:
-                continue
-            if inp.get("start") == start and inp.get("end") == end and result.get("hops") is not None:
-                stepped = fare_for_hops(int(result["hops"]), rules)
-                result["fare"] = stepped
-                result["reference_fare"] = stepped
-                result["fare_source"] = "steps"
-                self._conn.execute(
-                    "UPDATE calc_runs SET result_json=? WHERE id=?",
-                    (json.dumps(result, ensure_ascii=False), row["id"]),
-                )
-                self._conn.commit()
-        return ok
+        # 已写入的试算记录是快照：删除一口价不得回写历史记录的应付与参考合计
+        return flat_repo.delete_pair(self._conn, start, end)
 
     def settings(self):
         return settings_repo.get_map(self._conn)
