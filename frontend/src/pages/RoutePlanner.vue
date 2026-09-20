@@ -32,10 +32,25 @@ const run = async () => {
             分段票价 <span class="hero-num">¥{{ out.fare }}</span>
           </span>
         </p>
-        <p v-if="out.fare_source === 'flat'" class="muted">
-          本应按分段表（{{ out.hops }} 站）算出参考价 ¥{{ out.reference_fare }}
-        </p>
         <p class="muted">{{ out.hops }} 站 · 最短途经：{{ out.path.map(nameOf).join(' → ') }}</p>
+        <table>
+          <thead><tr><th>#</th><th>区间</th><th>累计站数</th><th>分段参考价</th></tr></thead>
+          <tbody>
+            <tr v-for="seg in out.segments" :key="seg.seq">
+              <td>{{ seg.seq }}</td>
+              <td>{{ nameOf(seg.from) }} → {{ nameOf(seg.to) }}</td>
+              <td>{{ seg.cum_hops }}</td>
+              <td>¥{{ seg.price.toFixed(2) }}</td>
+            </tr>
+            <tr>
+              <td colspan="3">行加总（按 {{ out.hops }} 站取分段价）</td>
+              <td>¥{{ out.segment_total.toFixed(2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="out.fare_source === 'flat'" class="muted">
+          命中一口价：应付按一口价 ¥{{ out.fare }}，分段参考合计 ¥{{ out.segment_total }} 仅作对照。
+        </p>
       </template>
       <p v-else class="muted">不可达</p>
     </div>

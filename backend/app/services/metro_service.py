@@ -1,9 +1,6 @@
 import sqlite3
 
-import json
-
 from app.db import connect
-from app.engines.fare_rules import fare_for_hops
 from app.engines.route_quote import quote_route
 from app.repositories import edges as edges_repo
 from app.repositories import fare_rules as rules_repo
@@ -69,25 +66,10 @@ class MetroService:
         return row
 
     def delete_flat_fare(self, start: str, end: str) -> bool:
-        ok = flat_repo.delete_pair(self._conn, start, end)
-        rules = rules_repo.as_calc_rules(self._conn)
-        for row in runs_repo.list_recent(self._conn, 200):
-            try:
-                inp = json.loads(row["input_json"])
-                result = json.loads(row["result_json"])
-            except Exception:
-                continue
-            if inp.get("start") == start and inp.get("end") == end and result.get("hops") is not None:
-                stepped = fare_for_hops(int(result["hops"]), rules)
-                result["fare"] = stepped
-                result["reference_fare"] = stepped
-                result["fare_source"] = "steps"
-                self._conn.execute(
-                    "UPDATE calc_runs SET result_json=? WHERE id=?",
-                    (json.dumps(result, ensure_ascii=False), row["id"]),
-                )
-                self._conn.commit()
-        return ok
+        # Only the flat-fare registration is removed. Written calc_runs are
+        # point-in-time snapshots: their fare and reference total must stay as
+        # they were when the quote was persisted.
+        return flat_repo.delete_pair(self._conn, start, end)
 
     def settings(self):
         return settings_repo.get_map(self._conn)
@@ -106,19 +88,13 @@ class MetroService:
         return runs_repo.list_recent(self._conn, limit)
 
     def history_item(self, run_id: int):
+        # Return the persisted snapshot verbatim; neither the fare nor the
+        # reference total is recomputed against the current tables.
         row = None
         for it in runs_repo.list_recent(self._conn, 200):
             if int(it["id"]) == int(run_id):
                 row = dict(it)
                 break
-        if row is None:
-            return None
-        result = json.loads(row["result_json"])
-        hops = result.get("hops")
-        if hops is not None:
-            rules = rules_repo.as_calc_rules(self._conn)
-            result["reference_fare"] = fare_for_hops(int(hops), rules)
-        row["result_json"] = json.dumps(result, ensure_ascii=False)
         return row
 
     def dashboard(self):

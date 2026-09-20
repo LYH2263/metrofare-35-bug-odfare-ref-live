@@ -1,6 +1,6 @@
 from app.engines.fare_rules import fare_for_hops
 from app.engines.graph_bfs import shortest_hops, shortest_path
-from app.engines.route_quote import quote_route
+from app.engines.route_quote import build_segments, quote_route
 
 EDGES = [("A1", "A2"), ("A2", "A3"), ("A2", "B1"), ("B1", "B2")]
 RULES = [{"max_hops": 2, "price": 3.0}, {"max_hops": 4, "price": 4.0}, {"max_hops": None, "price": 6.0}]
@@ -53,3 +53,28 @@ def test_quote_flat_is_directed():
     flats = [{"start": "A1", "end": "B2", "price": 2.5}]
     q = quote_route(EDGES, "B2", "A1", RULES, flats)
     assert q["fare_source"] == "steps" and q["fare"] == 4.0
+
+
+def test_segments_expansion_telescopes_to_step_price():
+    # A1->B2 is 3 hops -> step-table price 4.0; per-row marginal prices must
+    # sum to exactly the price looked up by total stations.
+    q = quote_route(EDGES, "A1", "B2", RULES)
+    segs = q["segments"]
+    assert [s["cum_hops"] for s in segs] == [1, 2, 3]
+    assert [s["from"] for s in segs] == ["A1", "A2", "B1"]
+    assert [s["to"] for s in segs] == ["A2", "B1", "B2"]
+    # first two hops each 3.0 band -> 3.0 then 0.0 marginal; third hop enters
+    # the 4.0 band -> +1.0
+    assert [s["price"] for s in segs] == [3.0, 0.0, 1.0]
+    assert round(sum(s["price"] for s in segs), 2) == q["segment_total"] == 4.0
+    assert q["segment_total"] == fare_for_hops(3, RULES)
+
+
+def test_segments_present_but_flat_charged():
+    flats = [{"start": "A1", "end": "B2", "price": 2.5}]
+    q = quote_route(EDGES, "A1", "B2", RULES, flats)
+    assert q["fare"] == 2.5
+    assert q["reference_fare"] == q["segment_total"] == 4.0
+    assert round(sum(s["price"] for s in q["segments"]), 2) == 4.0
+    # flat price is deliberately different from the row sum
+    assert q["fare"] != q["segment_total"]
